@@ -1,0 +1,2 @@
+12/12/16	La porta seriale ti serve come debug. Mettila dentro a 
+		delle #ifdef
