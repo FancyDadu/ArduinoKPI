@@ -28,7 +28,11 @@ Tutte e tre le funzioni utilizzerebbero processChar() per riconoscere la sintass
 08/01/17
 
 Da fare: 
+
 -wrappers per i rimanenti tipi di transazione , sulla falsa riga di join()
+
 -analizzatore di contenuti dei messaggi ricevuti e memorizzati nella sd ; la struttura sarà estremamente simile a composeMessage, e forse sarebbe possibile fare un'unica funzione con diverse modalità di funzionamento
+
 -funzione per cambiare il node id , in modo casuale o personalizzato ; a tal proposito potrebbe essere utile costruire una struttura questa info , il Client KPI e altre info per compattezza
+
 -cambiare il nome dinamicamente ai file dei messaggi ricevuti ; ciò potrebbe essere fatto sapendo il tipo di messaggio ricevuto e l'id transazione , i quali verrebbero ricavati tramite l'analizzatore -> cambiare nome a posteriori
