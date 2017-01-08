@@ -1,6 +1,13 @@
 #include "ArduinoKPI.h"
 boolean HasSDBegun = false;
 
+struct Contents {
+  char type[MAX_NAME_SIZE];
+  char content[MAX_CONTENT_SIZE];
+  Contents* next;
+
+};
+
 //--------------------------------------------------------------------------------------------------------------
 
 byte processChar(const char c, byte lastState) {
@@ -49,6 +56,7 @@ byte processChar(const char c, byte lastState) {
       break;
 
     default: //whatever else,either it's part of the tag name, or an entity reference,or parameter,or
+      return 0;
       ;
 
   }
@@ -59,7 +67,7 @@ byte processChar(const char c, byte lastState) {
 
 WiFiClient connectToSib(IPAddress server,  short port) {
   WiFiClient client;
-  if (client.connect(server, 10010)) return client;
+  if (client.connect(server, port)) return client;
   return NULL;
 }
 
@@ -81,9 +89,10 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
 
   unsigned long startingTime = millis();
 
-  do  {
+  status = WiFi.begin(ssid, pass);
 
-    status = WiFi.begin(ssid, pass);
+  while (status != WL_CONNECTED) {
+
 
     if (millis() - startingTime > WIFI_TIMEOUT) {
 
@@ -93,8 +102,10 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
 
       return false;
     }
+    status = WiFi.begin(ssid, pass);
 
-  } while (status != WL_CONNECTED);
+
+  }
 
   return true;
 
@@ -103,13 +114,18 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
 //--------------------------------------------------------------------------------------------------------------
 
 bool initializeSD() {
+#ifdef DEBUG
+  Serial.println(F("Initializing SDCard..."));
+#endif
+
   if (!HasSDBegun && SD.begin(SS_SD_PIN)) {
 #ifdef DEBUG
-    Serial.println(F("Initializing SDCard..."));
+    Serial.println(F("SDCard initialized."));
 #endif
     HasSDBegun = true;
     return true;
   }
+
   return false;
 }
 
@@ -127,11 +143,11 @@ bool receiveAndStore(bool mode, WiFiClient KPI) {
   }
 
   File storage;
-  storage = SD.open("Store.xml", FILE_WRITE); //gonna change this with a dynamic name
+  storage = SD.open("Store12.xml", FILE_WRITE); //gonna change this with a dynamic name
 
   if (storage) {
 
-    char buffer[MAX_BUFFER_LENGTH] = {""}, element[MAX_BUFFER_LENGTH], tag[MAX_BUFFER_LENGTH];
+    char buffer[MAX_BUFFER_LENGTH] = {""};
     short bufCount = 0;
 
 
@@ -139,21 +155,18 @@ bool receiveAndStore(bool mode, WiFiClient KPI) {
     bool ignore = false;
 
 
-    while (KPI.available()) {
+    while (KPI.available() > 0) {
 
-      while (bufCount < MAX_BUFFER_LENGTH && KPI.available() ) { //while there's still stuff to read and available space , store it in buffer
-        buffer[bufCount] = KPI.read();
-        bufCount++;
+      while (bufCount < MAX_BUFFER_LENGTH && KPI.available() > 0 ) { //while there's still stuff to read and available space , store it in buffer
+        buffer[bufCount++] = KPI.read();
       }
 
       if (bufCount > 0) { //if there's anything inside the buffer
 
         if (!mode) { //store without formatting
           storage.write(buffer, bufCount);
-
-          for (int j = 0; j < bufCount; j++) {
-            buffer[j] = "";
-          }
+          storage.flush();
+          strcpy(buffer, "");
           bufCount = 0;
         }
 
@@ -217,5 +230,117 @@ bool receiveAndStore(bool mode, WiFiClient KPI) {
 
 }
 
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+bool composeMessage(char* type, Contents* list, WiFiClient KPI) { //type can be
+
+  if (!HasSDBegun && !initializeSD()) {
+#ifdef DEBUG
+    Serial.println(F("Error on Initializing SD!"));
+#endif
+    return false;
+  }
+
+  File xtemp;
+  //strcat(type, "template.xml");
+  xtemp = SD.open(type, FILE_READ);
+
+  if (xtemp);
+  else {
+#ifdef DEBUG
+    Serial.print(F("Error on Opening File: "));
+    Serial.println(type);
+#endif
+    return false;
+  }
+
+  char c;
+  char tagName[MAX_NAME_SIZE] = {""};
+  short i = 0;
+  byte state = 0, lastState = 0;
+  bool readingName = false;
+
+  Contents* current = list;
+
+  while (xtemp.available() > 0) {
+
+    c = xtemp.read();
+    KPI.print(c);
+
+    if (1/*current->next != NULL*/) {
+
+      state = processChar(c, state);
+
+      if (lastState == B10010000 && state != B10000100) { //that is , a tag has been opened but it's not a closing one
+        readingName = true;
+#ifdef DEBUG
+        Serial.println(F("Tag opened "));
+
+#endif
+      }
+
+      if (state == B10001000) {
+        if (readingName) { //finished reading tagName
+
+
+#ifdef DEBUG
+          Serial.print(F("Found tag: -"));
+          Serial.print(tagName);
+          Serial.print(F("- Searching for: -"));
+          Serial.print(current->type);
+          Serial.println("-");
+#endif
+
+
+
+          /*this is to scroll through the list to find the name we've just composed;in theory it won't be necessary , because the single function that are going to call composeMessage
+             will be built so that the list given to this function is already ordered accordingly to the desired template . Should the need to change the template arise , though, then this
+             snippet will improve flessibility.
+          */
+          //while (strcmp(tagName, current->type) != 0 || current->next != NULL) {
+          //current = current->next;
+          //}
+
+
+          if (strncmp(tagName, current->type,i) == 0) {
+#ifdef DEBUG
+            Serial.println(F("Found content!: "));
+            Serial.println(tagName);
+#endif
+            KPI.print(current->content);
+            current = current->next;
+          }
+          for (int j = 0; j <= i; j++) tagName[j] = " ";
+          i = 0;
+        }
+        readingName = false;
+      }
+
+    }
+
+    if (readingName) tagName[i++] = c;
+
+    lastState = state;
+  }
+  KPI.println();
+
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------
+
+bool join(short trId, char nodeId[], WiFiClient KPI) {
+
+  Contents tr, id;
+
+  strcpy(tr.type, "transaction_id");
+  itoa(trId, tr.content, 10);
+  tr.next = &id;
+
+  strcpy(id.type, "node_id");
+  strcpy(id.content, nodeId);
+  id.next = NULL;
+
+  composeMessage("join", &tr, KPI);
+
+}
 
