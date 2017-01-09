@@ -1,14 +1,4 @@
 #include "ArduinoKPI.h"
-boolean HasSDBegun = false;
-
-struct Contents {
-  char type[MAX_NAME_SIZE];
-  char content[MAX_CONTENT_SIZE];
-  Contents* next;
-
-};
-
-//--------------------------------------------------------------------------------------------------------------
 
 byte processChar(const char c, byte lastState) {
   byte state;
@@ -65,82 +55,11 @@ byte processChar(const char c, byte lastState) {
 
 //--------------------------------------------------------------------------------------------------------------
 
-WiFiClient connectToSib(IPAddress server,  short port) {
-  WiFiClient client;
-  if (client.connect(server, port)) return client;
-  return NULL;
-}
-
-//--------------------------------------------------------------------------------------------------------------
-
-bool WiFiConnect(const char ssid[], const char pass[]) {
-
-  int status = WL_IDLE_STATUS;
-
-#ifdef SHIELD_STATUS_CONTROL
-  if (WiFi.status() == WL_NO_SHIELD || WiFi.firmwareVersion() != "1.1.0") {
-
-#ifdef DEBUG
-    Serial.println(F("Error on WiFi Shield"));
-#endif
-    return false;
-  }
-#endif
-
-  unsigned long startingTime = millis();
-
-  status = WiFi.begin(ssid, pass);
-
-  while (status != WL_CONNECTED) {
-
-
-    if (millis() - startingTime > WIFI_TIMEOUT) {
-
-#ifdef DEBUG
-      Serial.println(F("WiFi timed out!"));
-#endif
-
-      return false;
-    }
-    status = WiFi.begin(ssid, pass);
-
-
-  }
-
-  return true;
-
-}
-
-//--------------------------------------------------------------------------------------------------------------
-
-bool initializeSD() {
-#ifdef DEBUG
-  Serial.println(F("Initializing SDCard..."));
-#endif
-
-  if (!HasSDBegun && SD.begin(SS_SD_PIN)) {
-#ifdef DEBUG
-    Serial.println(F("SDCard initialized."));
-#endif
-    HasSDBegun = true;
-    return true;
-  }
-
-  return false;
-}
-
-//--------------------------------------------------------------------------------------------------------------
-
 bool receiveAndStore(bool mode, WiFiClient KPI) {
   /*
      this function handles the reception of the message from the server and consequently stores it in the SDCard,accordingly to the mode selected
   */
-  if (!HasSDBegun && !initializeSD()) {
-#ifdef DEBUG
-    Serial.println(F("Error on Initializing SD!"));
-#endif
-    return false;
-  }
+  if (!initializeSD()) return false;
 
   File storage;
   storage = SD.open("Store12.xml", FILE_WRITE); //gonna change this with a dynamic name
@@ -232,115 +151,164 @@ bool receiveAndStore(bool mode, WiFiClient KPI) {
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool composeMessage(char* type, Contents* list, WiFiClient KPI) { //type can be
+bool analyzeMessage();
 
-  if (!HasSDBegun && !initializeSD()) {
-#ifdef DEBUG
-    Serial.println(F("Error on Initializing SD!"));
-#endif
-    return false;
-  }
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Contents addCont(char type[MAX_NAME_SIZE], char cont[MAX_CONTENT_SIZE]) {
+  Contents c;
+  strcpy(c.type, type);
+  strcpy(c.content, cont);
+  return c;
+}
+
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool composeMessage(char code, KP kpi, Triple t) { //type can be
+
+  if (!initializeSD()) return false;
 
   File xtemp;
-  //strcat(type, "template.xml");
-  xtemp = SD.open(type, FILE_READ);
+  char name[10];
+  name[0]=code;
+  strcat(name,"template");
+  xtemp = SD.open(name, FILE_READ);
 
-  if (xtemp);
+  if (xtemp) {
+#ifdef DEBUG
+    Serial.println(F("File successfully opened"));
+
+#endif
+
+    //BUILDING CONTENT STARTS HERE---------------------------------------------
+
+#ifdef ADV_DEBUG
+    Serial.println(F("building.."));
+#endif
+
+    Contents id, node; //always necessary
+    Contents* current;
+
+    current = &id;
+
+    strcpy(id.type, "transaction_id");
+    itoa(kpi.trID, id.content, 10);
+
+    node = addCont("node_id", kpi.nodeID);
+    current->next = &node;
+    current = current->next;
+
+    if (code == 'u') { //unsubscribe
+      Contents unsub;
+      unsub = addCont("parameter name = \"subscription_id\"", kpi.sub);
+      current->next = &unsub;
+      current = current->next;
+    }
+
+    else if (code == 'i' || code == 'q' || code == 'r' || code == 's') { //insert/query/remove/subscribe -> need triple
+      Contents sub, pred, obj;
+      sub = addCont("subject type=\"uri\"", t.subject);
+      current->next = &sub;
+      current = current->next;
+      pred = addCont("predicate", t.predicate);
+      current->next = &pred;
+      current = current->next;
+      obj = addCont("object type=\"uri\"", t.object);
+      current->next = &obj;
+      current = current->next;
+    }
+
+    current->next = NULL;
+
+#ifdef ADV_DEBUG
+    Serial.println(F("contents :"));
+    current = &id;
+    while (current != NULL) {
+      Serial.print(current->type);
+      Serial.println(current->content);
+      current = (current->next);
+    }
+    Serial.println(F("end"));
+
+#endif
+
+    //FINISHES HERE--------------------------------------------------------------------
+
+
+
+    char c;
+    char tagName[MAX_NAME_SIZE] = {""};
+    short i = 0;
+    byte state = 0, lastState = 0;
+    bool readingName = false;
+
+    current = &id;
+
+    while (xtemp.available() > 0) {
+
+      c = xtemp.read();
+      (kpi.client).write(c);
+
+      if (current != NULL) {
+
+        state = processChar(c, state);
+
+        if (lastState == B10010000 && state != B10000100) { //that is , a tag has been opened but it's not a closing one
+          readingName = true;
+#ifdef DEBUG
+          Serial.println(F("Tag opened "));
+
+#endif
+        }
+
+        if (state == B10001000) {
+          if (readingName) { //finished reading tagName
+
+
+#ifdef DEBUG
+            Serial.print(F("Found tag: -"));
+            Serial.print(tagName);
+            Serial.print(F("- Searching for: -"));
+            Serial.print(current->type);
+            Serial.println("-");
+#endif
+
+            if (strncmp(tagName, current->type, i) == 0) {
+
+#ifdef DEBUG
+              Serial.println(F("Found content!: "));
+              Serial.println(tagName);
+#endif
+              (kpi.client).print(current->content);
+              current = current->next;
+            }
+            //for (int j = 0; j <= i; j++) tagName[j] = " ";
+            strncpy(tagName, "", sizeof(tagName));
+            i = 0;
+          }
+          readingName = false;
+        }
+
+      }
+
+      if (readingName) tagName[i++] = c;
+
+      lastState = state;
+    }
+
+    (kpi.client).println();
+    xtemp.close();
+  }
+
   else {
 #ifdef DEBUG
-    Serial.print(F("Error on Opening File: "));
-    Serial.println(type);
+    Serial.print(F("Error File: "));
+    Serial.println(code);
 #endif
     return false;
   }
-
-  char c;
-  char tagName[MAX_NAME_SIZE] = {""};
-  short i = 0;
-  byte state = 0, lastState = 0;
-  bool readingName = false;
-
-  Contents* current = list;
-
-  while (xtemp.available() > 0) {
-
-    c = xtemp.read();
-    KPI.print(c);
-
-    if (1/*current->next != NULL*/) {
-
-      state = processChar(c, state);
-
-      if (lastState == B10010000 && state != B10000100) { //that is , a tag has been opened but it's not a closing one
-        readingName = true;
-#ifdef DEBUG
-        Serial.println(F("Tag opened "));
-
-#endif
-      }
-
-      if (state == B10001000) {
-        if (readingName) { //finished reading tagName
-
-
-#ifdef DEBUG
-          Serial.print(F("Found tag: -"));
-          Serial.print(tagName);
-          Serial.print(F("- Searching for: -"));
-          Serial.print(current->type);
-          Serial.println("-");
-#endif
-
-
-
-          /*this is to scroll through the list to find the name we've just composed;in theory it won't be necessary , because the single function that are going to call composeMessage
-             will be built so that the list given to this function is already ordered accordingly to the desired template . Should the need to change the template arise , though, then this
-             snippet will improve flessibility.
-          */
-          //while (strcmp(tagName, current->type) != 0 || current->next != NULL) {
-          //current = current->next;
-          //}
-
-
-          if (strncmp(tagName, current->type,i) == 0) {
-#ifdef DEBUG
-            Serial.println(F("Found content!: "));
-            Serial.println(tagName);
-#endif
-            KPI.print(current->content);
-            current = current->next;
-          }
-          for (int j = 0; j <= i; j++) tagName[j] = " ";
-          i = 0;
-        }
-        readingName = false;
-      }
-
-    }
-
-    if (readingName) tagName[i++] = c;
-
-    lastState = state;
-  }
-  KPI.println();
-
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------
 
-bool join(short trId, char nodeId[], WiFiClient KPI) {
-
-  Contents tr, id;
-
-  strcpy(tr.type, "transaction_id");
-  itoa(trId, tr.content, 10);
-  tr.next = &id;
-
-  strcpy(id.type, "node_id");
-  strcpy(id.content, nodeId);
-  id.next = NULL;
-
-  composeMessage("join", &tr, KPI);
-
-}
 
