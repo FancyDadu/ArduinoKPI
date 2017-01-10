@@ -1,11 +1,5 @@
 #include "ArduinoKPI.h"
 
-
-#define WIFI1 "ASUS", "miofigliomaggiore88"
-#define WIFI2 "Xperia", "bubu1234"
-
-
-
 void setup() {
   Serial.begin(57600);
   KP kpi;
