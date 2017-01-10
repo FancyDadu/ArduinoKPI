@@ -15,7 +15,7 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
   int status = WL_IDLE_STATUS;
 
 #ifdef SHIELD_STATUS_CONTROL
-  if (WiFi.status() == WL_NO_SHIELD || WiFi.firmwareVersion() != "1.1.0") {
+  if (WiFi.status() == WL_NO_SHIELD || WiFi.firmwareVersion() != F("1.1.0")) {
 
 #ifdef DEBUG
     Serial.println(F("Error on WiFi Shield"));

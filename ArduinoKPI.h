@@ -14,15 +14,16 @@
 #include <SPI.h>
 #include <SD.h>
 
-
 #define DEBUG 1
-#define ADV_DEBUG 1
 
+#ifdef ADV_DEBUG
+  #include <MemoryFree.h>
+#endif
 
 #define MAX_BUFFER_LENGTH 30
-#define MAX_NAME_SIZE 50
+#define MAX_NAME_SIZE 30
 #define MAX_CONTENT_SIZE 30
-#define MAX_URI_SIZE 30
+#define MAX_URI_SIZE 15
 #define MAX_ID_SIZE 20
 #define MAX_SUBSCRIPTION_SIZE 30
 
@@ -36,8 +37,8 @@ struct KP{
 };
 
 struct Contents {
-  char type[MAX_NAME_SIZE];
-  char content[MAX_CONTENT_SIZE];
+  char type[MAX_NAME_SIZE]="";
+  char content[MAX_CONTENT_SIZE]="";
   Contents* next;
 };
 
