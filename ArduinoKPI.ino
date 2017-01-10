@@ -3,7 +3,7 @@
 void setup() {
   Serial.begin(57600);
   KP kpi;
-  if (WiFiConnect(WIFI2)) {
+  if (WiFiConnect("SSID","psw")) {
     Serial.println(F("connected"));
   }
   else {
@@ -18,23 +18,26 @@ void setup() {
     //while (1);
   }
 
-  strcpy_P(kpi.nodeID, PSTR("arduino"));
+  strcpy_P(kpi.nodeID, PSTR("arduino")); //future versions will change the name dinamically
   kpi.trID = 1;
 
   join(kpi);
 
   Triple c;
-  strcpy(c.subject, "http://ns#a");
-  strcpy(c.predicate, "http://ns#b");
-  strcpy(c.object, "http://ns#c");
-  kpi.trID++;
+  strcpy_P(c.subject, PSTR("http://ns#a")); //these
+  strcpy_P(c.predicate, PSTR("http://ns#b")); //as well
+  strcpy_P(c.object, PSTR("http://ns#c")); //will be changed dinamically
+  kpi.trID++; 
   rdfInsert(kpi, c);
   leave(kpi);
 }
 
 void loop() {
 
-
+  /*
+  code below has been commented out because declaring the kpi globally would take too much space in SRAM , and for now
+  the situation is slightly critical 
+  */
   //while (kpi.client.available()) receiveAndStore(0, kpi.client);
 
 }
