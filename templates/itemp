@@ -1,0 +1,17 @@
+<SSAP_message>
+<message_type>REQUEST</message_type>
+<transaction_type>INSERT</transaction_type>
+<transaction_id></transaction_id>
+<node_id></node_id>
+<space_id>X</space_id>
+<parameter name="confirm">TRUE</parameter>
+<parameter name="insert_graph"  encoding="RDF-M3">
+<triple_list>
+<triple>
+<subject type="uri"></subject>
+<predicate></predicate>
+<object type="uri"></object>
+</triple>
+</triple_list>
+</parameter>
+</SSAP_message>

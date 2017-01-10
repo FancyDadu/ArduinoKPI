@@ -1,0 +1,17 @@
+<SSAP_message>
+<transaction_type>QUERY</transaction_type>
+<message_type>REQUEST</message_type>
+<transaction_id></transaction_id>
+<node_id></node_id>
+<space_id>X</space_id>
+<parameter name = "type">RDF-M3</parameter>
+<parameter name = "query">
+<triple_list>
+<triple>
+<subject type="uri"></subject>
+<predicate></predicate>
+<object type="uri"></object>
+</triple>
+</triple_list>
+</parameter>
+</SSAP_message>
