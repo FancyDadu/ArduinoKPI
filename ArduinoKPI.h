@@ -1,6 +1,7 @@
 #ifndef ArduinoKPI.h
 #define ArduinoKPI.h
 
+
 #if ARDUINO>=100
 	#include "Arduino.h"
 #else
@@ -27,7 +28,8 @@
 #define MAX_ID_SIZE 20
 #define MAX_SUBSCRIPTION_SIZE 30
 
-
+#define MAX_PACKET_SIZE 60
+#define TX_LATENCY 2000
 
 struct KP{
   char nodeID[MAX_ID_SIZE];
@@ -53,7 +55,9 @@ struct Triple {
 
 byte processChar(const char c, byte lastState);
 
-bool receiveAndStore(bool mode, WiFiClient KPI);
+bool receive(WiFiClient kpi);
+
+bool store();
 
 bool analyzeMessage();
 

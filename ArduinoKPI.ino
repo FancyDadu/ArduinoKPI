@@ -1,9 +1,14 @@
 #include "ArduinoKPI.h"
 
+
+#define WIFI1 "ASUS", "miofigliomaggiore88"
+#define WIFI2 "Xperia", "bubu1234"
+#define WIFI3 "Vodafone-33346004", "12TREstell4"
+
 void setup() {
   Serial.begin(57600);
   KP kpi;
-  if (WiFiConnect("SSID","psw")) {
+  if (WiFiConnect(WIFI3)) {
     Serial.println(F("connected"));
   }
   else {
@@ -11,34 +16,50 @@ void setup() {
     //while (1);
   }
 
-  IPAddress server(192, 168, 43, 52);
+  IPAddress server(192, 168, 1, 5);
   kpi.client = connectToSib(server, 10010);
   if (kpi.client == NULL) {
     Serial.println(F("Cant connect to server"));
     //while (1);
   }
 
-  strcpy_P(kpi.nodeID, PSTR("arduino")); //future versions will change the name dinamically
+  strcpy_P(kpi.nodeID, PSTR("arduino"));
   kpi.trID = 1;
 
-  join(kpi);
+    join(kpi);
+    kpi.trID++;
+    
+    delay(4000);
+    while(kpi.client.available()>0) Serial.write(kpi.client.read());
+    Serial.println();
 
-  Triple c;
-  strcpy_P(c.subject, PSTR("http://ns#a")); //these
-  strcpy_P(c.predicate, PSTR("http://ns#b")); //as well
-  strcpy_P(c.object, PSTR("http://ns#c")); //will be changed dinamically
-  kpi.trID++; 
-  rdfInsert(kpi, c);
-  leave(kpi);
+    Triple c;
+    strcpy(c.subject, "http://ns#a");
+    strcpy(c.predicate, "http://ns#b");
+    strcpy(c.object, "http://ns#c");
+    
+
+    rdfInsert(kpi, c);
+    kpi.trID+=4;
+    
+    delay(4000);
+    while(kpi.client.available()>0) Serial.write(kpi.client.read());
+    Serial.println();
+
+
+    leave(kpi);
+    kpi.trID+=4;
+    
+    delay(4000);
+    while(kpi.client.available()>0) Serial.write(kpi.client.read());
+    Serial.println();
+
+
+
+  Serial.println(F("FINISHED!!!"));
 }
 
 void loop() {
-
-  /*
-  code below has been commented out because declaring the kpi globally would take too much space in SRAM , and for now
-  the situation is slightly critical 
-  */
-  //while (kpi.client.available()) receiveAndStore(0, kpi.client);
 
 }
 

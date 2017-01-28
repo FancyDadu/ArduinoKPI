@@ -53,114 +53,168 @@ byte processChar(const char c, byte lastState) {
 
 }
 
-//--------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool receive(WiFiClient kpi) {
 
-bool receiveAndStore(bool mode, WiFiClient KPI) {
-  /*
-     this function handles the reception of the message from the server and consequently stores it in the SDCard,accordingly to the mode selected
-  */
   if (!initializeSD()) return false;
 
+  SD.remove(F("store"));
   File storage;
-  storage = SD.open(F("store.xml"), FILE_WRITE); //gonna change this with a dynamic name
+  storage = SD.open(F("store"), FILE_WRITE);
 
   if (storage) {
 
     char buffer[MAX_BUFFER_LENGTH] = {""};
-    short bufCount = 0;
+    short bufCount = 0, totCount = 0;
 
+    while (kpi.available() > 0) {
 
-    byte state = 0, parentBefore = false, tagHasClosed = false, parents = 0;
-    bool ignore = false;
+      #ifdef DEBUG
+      Serial.println(F("Receiving..."));
+      #endif
 
-
-    while (KPI.available() > 0) {
-
-      while (bufCount < MAX_BUFFER_LENGTH && KPI.available() > 0 ) { //while there's still stuff to read and available space , store it in buffer
-        buffer[bufCount++] = KPI.read();
+      while (bufCount < MAX_BUFFER_LENGTH && kpi.available() > 0 ) { //while there's still stuff to read and available space , store it in buffer
+        buffer[bufCount++] = kpi.read();
       }
 
       if (bufCount > 0) { //if there's anything inside the buffer
+        storage.write(buffer, bufCount);
+        storage.flush();
+        strcpy(buffer, "");
+        totCount += bufCount;
+        bufCount = 0;
+      }
+    }
 
-        if (!mode) { //store without formatting
-          storage.write(buffer, bufCount);
-          storage.flush();
-          strcpy(buffer, "");
-          bufCount = 0;
-        }
+    #ifdef DEBUG
+    Serial.println(F("Communication Ended. Closing file now.."));
+    #endif
 
-        /*
-                else {
-                  for (int i = 0; i < bufCount ; i++) {
-                    state = processChar(buffer[i], state);
+    storage.close();
+    if (totCount > 20) return true;
 
-                    switch (state) {
-                      case 1:
-                        ;//error!
-
-                      case B10010000: //<
-                        if (!parentBefore) {
-                          parentBefore = true;
-                          parents++;
-                        }
-                        if (tagHasClosed) {
-                          storage.println();
-                        }
-                        break;
-
-                      case B10001000: // >
-                        tagHasClosed = true;
-                        break;
-
-                      case B10001010: // > + closingTag
-                        if (parentBefore) storage.println();
-
-                      case B00000010: //whitespace
-                        ignore = true;
-                        break;
+    return false;
+  }
 
 
-                    }
+  #ifdef DEBUG
+  Serial.println(F("Error on Opening File!"));
+  #endif
 
-                    if (!ignore) storage.print(buffer[i]);
+  return false;
+}
 
-                  }
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+bool store() {
+  if (!initializeSD()) return false;
 
-                }
-        */
+  File storage;
+  storage = SD.open(F("store"), FILE_READ);
+
+  if (storage) {
+
+    char c, last, type;
+    char tagName[MAX_NAME_SIZE] = {""}, id[3]; //max possible id : 999
+    bool foundT = false, foundI = false, readN = false, readT = false, readI = false;
+    byte i = 0;
+
+    while (storage.available() && !foundI) {
+
+      c = storage.read();
+
+      if (last == '<') {
+        if (c != '/') readN = true;
       }
 
+      if (readN) {
+        if (c != '>') tagName[i++] = c;
+        else {
+          if (!foundT && strncmp_P(tagName, PSTR("transaction_type"), i) == 0) readT = true;
+          else if (!foundI && strncmp_P(tagName, PSTR("transaction_id"), i) == 0) readI = true;
+          readN = false;
+          i = 0;
+        }
+      }
 
+      else {
+        if (readT) {
+          type = c;
+          readT = false;
+          foundT = true;
+        }
+
+        if (readI) {
+          id[i] = c;
+          c = storage.read();
+          while (c != '<') {
+            id[++i] = c;
+            c = storage.read();
+          }
+          if (i == 0) {
+            id[2] = id[0];
+            id[1] = 0;
+            id[0] = 0;
+          }
+          if (i == 1) {
+            id[2] = id[1];
+            id[1] = id[0];
+            id[0] = 0;
+          }
+          readI = false;
+          foundI = true;
+
+        }
+      }
+      last = c;
+    }
+
+    if (foundT && foundI) {
+
+      char name[4]; //type+id
+      name[0] = type;
+      strcat(name, id);
+
+      File dest = SD.open(name, FILE_WRITE);
+
+      if (dest) {
+        storage.seek(0);
+        while (storage.available()) {
+          dest.write(storage.read());
+        }
+        dest.close();
+        storage.close();
+        return true;
+      }
+
+      else return false;
 
     }
 
-#ifdef DEBUG
-    Serial.println(F("Communication Ended. Closing file now.."));
-#endif
+    else return false;
 
-    storage.close();
   }
 
   else {
-#ifdef DEBUG
-    Serial.println(F("Error on Opening File!"));
-#endif
+    #ifdef DEBUG
+    Serial.println(F("Error on reading store!"));
+    #endif
     return false;
   }
+
+}
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+bool analyzeMessage() {
 
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool analyzeMessage();
-
-//---------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-Contents subs(char type, char *state , KP kpi , Triple t) {
+Contents create(char type, char *state , KP kpi , Triple t) {
 
   Contents c;
 
-  /*3 bits -> 8 combinations:
+  /*
      trId,nodeId,unsub,sub,obj,pred
      the state coupled with the type of message that is being built will determine whether there's still content to be built;
      otherwise the returning struct will have a field indicating that no more content is going to be added / searched for
@@ -217,7 +271,7 @@ Contents subs(char type, char *state , KP kpi , Triple t) {
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool composeMessage(char code, KP kpi, Triple t) { //type can be
+bool composeMessage(char code, KP kpi, Triple t) {
 
   if (!initializeSD()) return false;
 
@@ -226,64 +280,85 @@ bool composeMessage(char code, KP kpi, Triple t) { //type can be
   name[0] = code;
 
   strcat(name, "temp");
+  #ifdef DEBUG
   Serial.println(name);
+  #endif
+
   xtemp = SD.open(name, FILE_READ);
 
   if (xtemp) {
-#ifdef DEBUG
+
+    #ifdef DEBUG
     Serial.println(F("File successfully opened"));
+    #endif
 
-#endif
+    char c, cState = 'i'; //first part of the contents chain will always be the transaction id
+    char state, lastState ; // used by the sequence reader
 
-    char c, cState = 'i';
-    char tagName[MAX_NAME_SIZE] = {""};
+    char tagName[MAX_NAME_SIZE] = {""}, buffer[MAX_PACKET_SIZE] = {""};
 
-    byte i = 0;
-    byte state = 0, lastState = 0 ;
+    byte i = 0, count = 0; //i : needed for knowing the length of buffered tag name
 
     bool readingName = false, last = true;
 
-    Contents curr = subs(code, &cState, kpi, t);
+    Contents curr = create(code, &cState, kpi, t);
 
     while (xtemp.available() > 0) {
 
       c = xtemp.read();
-      (kpi.client).write(c);
+      state = c;
+      buffer[count++] = c;
 
-      if (cState != 'z') {
+      if (count > MAX_PACKET_SIZE-2 || xtemp.peek() < 0) {
+        (kpi.client).write(buffer);
+        strncpy(buffer, "", sizeof(buffer));
+        count = 0;
+        delay(TX_LATENCY);
+      }
 
-        state = processChar(c, state);
 
-        if (lastState == B10010000 && state != B10000100) { //that is , a tag has been opened but it's not a closing one
+      if (cState != 'z') { //z means no more content to be added
+
+        if (lastState == '<' && state != '/' ) { //that is , a tag has been opened but it's not a closing one
+
           readingName = true;
-#ifdef DEBUG
+          #ifdef DEBUG
           Serial.println(F("Tag opened "));
-
-#endif
+          #endif
         }
 
-        if (state == B10001000) {
+        if (state == '>') {
+
           if (readingName) { //finished reading tagName
 
-
-#ifdef DEBUG
+            #ifdef DEBUG
             Serial.print(F("Found tag: -"));
             Serial.print(tagName);
             Serial.print(F("- Searching for: -"));
             Serial.print(curr.type);
             Serial.println("-");
-#endif
+            #endif
 
             if (strncmp(tagName, curr.type, i) == 0) {
 
-#ifdef DEBUG
+              #ifdef DEBUG
               Serial.println(F("Found content!: "));
               Serial.println(tagName);
-#endif
-              (kpi.client).print(curr.content);
-              curr = subs(code, &cState, kpi, t);
+              #endif
+
+              if (count>0 && count+strlen(curr.content)>MAX_PACKET_SIZE-2) {
+                (kpi.client).write(buffer);
+                count = 0;
+                strncpy(buffer, "", sizeof(buffer));
+                delay(TX_LATENCY);
+              }
+              
+              strcat(buffer,curr.content);
+              count+=strlen(curr.content);
+              curr = create(code, &cState, kpi, t);
 
             }
+            
             strncpy(tagName, "", sizeof(tagName));
             i = 0;
           }
@@ -299,17 +374,18 @@ bool composeMessage(char code, KP kpi, Triple t) { //type can be
 
     (kpi.client).println();
     xtemp.close();
+    return true;
   }
 
-  else {
-#ifdef DEBUG
-    Serial.print(F("Error File: "));
-    Serial.println(code);
-#endif
-    return false;
-  }
+
+  #ifdef DEBUG
+  Serial.print(F("Error File: "));
+  Serial.println(code);
+  #endif
+
+  return false;
 }
 
-//------------------------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
