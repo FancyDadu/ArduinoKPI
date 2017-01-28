@@ -132,6 +132,7 @@ bool store() {
           if (!foundT && strncmp_P(tagName, PSTR("transaction_type"), i) == 0) readT = true;
           else if (!foundI && strncmp_P(tagName, PSTR("transaction_id"), i) == 0) readI = true;
           readN = false;
+          strncpy(tagName, "", sizeof(tagName));
           i = 0;
         }
       }
@@ -144,7 +145,10 @@ bool store() {
         }
 
         if (readI) {
+
+          i = 0;
           id[i] = c;
+
           c = storage.read();
           while (c != '<') {
             id[++i] = c;
@@ -152,17 +156,16 @@ bool store() {
           }
           if (i == 0) {
             id[2] = id[0];
-            id[1] = 0;
-            id[0] = 0;
+            id[1] = '0';
+            id[0] = '0';
           }
           if (i == 1) {
             id[2] = id[1];
             id[1] = id[0];
-            id[0] = 0;
+            id[0] = '0';
           }
           readI = false;
           foundI = true;
-
         }
       }
       last = c;
@@ -170,11 +173,14 @@ bool store() {
 
     if (foundT && foundI) {
 
-      char name[4]; //type+id
-      name[0] = type;
-      strcat(name, id);
+      char dName[4]={""}; //type+id
+      dName[0] = type;
+      //for (int j = 0; j < 3; j++) dName[j + 1] = id[j];
+      strncat(dName, id, sizeof(id));
 
-      File dest = SD.open(name, FILE_WRITE);
+      SD.remove(dName);
+
+      File dest = SD.open(dName, FILE_WRITE);
 
       if (dest) {
         storage.seek(0);
@@ -186,11 +192,21 @@ bool store() {
         return true;
       }
 
-      else return false;
+      else {
+        #ifdef DEBUG
+        Serial.println("cant open dest");
+        #endif
+        return false;
+      }
 
     }
 
-    else return false;
+    else {
+      #ifdef DEBUG
+      Serial.println(F("T/I no found"));
+      #endif
+      return false;
+    }
 
   }
 
@@ -309,7 +325,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
       state = c;
       buffer[count++] = c;
 
-      if (count > MAX_PACKET_SIZE-2 || xtemp.peek() < 0) {
+      if (count > MAX_PACKET_SIZE - 2 || xtemp.peek() < 0) {
         (kpi.client).write(buffer);
         strncpy(buffer, "", sizeof(buffer));
         count = 0;
@@ -346,19 +362,19 @@ bool composeMessage(char code, KP kpi, Triple t) {
               Serial.println(tagName);
               #endif
 
-              if (count>0 && count+strlen(curr.content)>MAX_PACKET_SIZE-2) {
+              if (count > 0 && count + strlen(curr.content) > MAX_PACKET_SIZE - 2) {
                 (kpi.client).write(buffer);
                 count = 0;
                 strncpy(buffer, "", sizeof(buffer));
                 delay(TX_LATENCY);
               }
-              
-              strcat(buffer,curr.content);
-              count+=strlen(curr.content);
+
+              strcat(buffer, curr.content);
+              count += strlen(curr.content);
               curr = create(code, &cState, kpi, t);
 
             }
-            
+
             strncpy(tagName, "", sizeof(tagName));
             i = 0;
           }
