@@ -1,5 +1,24 @@
 #include "ArduinoKPI.h"
 
+KP::KP(char ID[], short TR ) {
+  strcpy(_nodeID, ID);
+  _trID = TR;
+  _status = OK;
+}
+
+void KP::begin(char SSID[MAX_SSID_LENGTH], char psw[MAX_PSW_LENGTH], short p, byte a, byte b, byte c, byte d) { //a,b,c,d : bytes of the IP address,to be put in order
+  if (!WiFiConnect(SSID, psw)) _status = WIFI_CONN_ERR;
+  _port = p;
+  _ip[0] = a;
+  _ip[1] = b;
+  _ip[2] = c;
+  _ip[3] = d;
+}
+
+byte KP::getState() {
+  return _status;
+}
+
 byte processChar(const char c, byte lastState) {
   byte state;
   /*
@@ -54,9 +73,16 @@ byte processChar(const char c, byte lastState) {
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
-bool receive(WiFiClient kpi) {
+void KP::receive() {
 
-  if (!initializeSD()) return false;
+  #ifdef DEBUG
+  Serial.println(F("-----------RECEIVING----------"));
+  #endif
+
+  if (!initializeSD()) {
+    _status = SD_ERR_INI;
+    return;
+  }
 
   SD.remove(F("store"));
   File storage;
@@ -67,14 +93,17 @@ bool receive(WiFiClient kpi) {
     char buffer[MAX_BUFFER_LENGTH] = {""};
     short bufCount = 0, totCount = 0;
 
-    while (kpi.available() > 0) {
+    while (_comm.available() > 0) {
 
       #ifdef DEBUG
       Serial.println(F("Receiving..."));
       #endif
 
-      while (bufCount < MAX_BUFFER_LENGTH && kpi.available() > 0 ) { //while there's still stuff to read and available space , store it in buffer
-        buffer[bufCount++] = kpi.read();
+      while (bufCount < MAX_BUFFER_LENGTH && _comm.available() > 0 ) { //while there's still stuff to read and available space , store it in buffer
+        buffer[bufCount++] = _comm.read();
+        #ifdef DEBUG
+        Serial.print(buffer[bufCount - 1]);
+        #endif
       }
 
       if (bufCount > 0) { //if there's anything inside the buffer
@@ -91,9 +120,16 @@ bool receive(WiFiClient kpi) {
     #endif
 
     storage.close();
-    if (totCount > 20) return true;
+    if (totCount > 20) {
+      _status = OK;
+      return;
+    }
 
-    return false;
+    _status = TOO_SHORT;
+    #ifdef DEBUG
+    Serial.println(F("TOO SHORT!"));
+    #endif
+    return;
   }
 
 
@@ -101,12 +137,20 @@ bool receive(WiFiClient kpi) {
   Serial.println(F("Error on Opening File!"));
   #endif
 
-  return false;
+  _status = SD_ERR_FILE;
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
-bool store() {
-  if (!initializeSD()) return false;
+void KP::store() {
+
+  #ifdef DEBUG
+  Serial.println(F("-----------STORING----------"));
+  #endif
+
+  if (!initializeSD()) {
+    _status = SD_ERR_INI;
+    return;
+  }
 
   File storage;
   storage = SD.open(F("store"), FILE_READ);
@@ -173,7 +217,7 @@ bool store() {
 
     if (foundT && foundI) {
 
-      char dName[4]={""}; //type+id
+      char dName[4] = {""}; //type+id
       dName[0] = type;
       //for (int j = 0; j < 3; j++) dName[j + 1] = id[j];
       strncat(dName, id, sizeof(id));
@@ -189,14 +233,15 @@ bool store() {
         }
         dest.close();
         storage.close();
-        return true;
+        _status = OK;
+        return;
       }
 
       else {
         #ifdef DEBUG
         Serial.println("cant open dest");
         #endif
-        return false;
+        _status = SD_ERR_FILE;
       }
 
     }
@@ -205,7 +250,7 @@ bool store() {
       #ifdef DEBUG
       Serial.println(F("T/I no found"));
       #endif
-      return false;
+      _status = BAD_STRUCT;
     }
 
   }
@@ -214,19 +259,19 @@ bool store() {
     #ifdef DEBUG
     Serial.println(F("Error on reading store!"));
     #endif
-    return false;
+    _status = SD_ERR_FILE;
   }
 
 }
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool analyzeMessage() {
+void KP::analyzeMessage() {
 
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-Contents create(char type, char *state , KP kpi , Triple t) {
+Contents KP::create(char type, char *state , Triple t) {
 
   Contents c;
 
@@ -240,13 +285,13 @@ Contents create(char type, char *state , KP kpi , Triple t) {
 
     case 'i':
       strcpy_P(c.type, PSTR("transaction_id"));
-      itoa(kpi.trID, c.content, 10);
+      itoa(_trID, c.content, 10);
       *state = 'n';
       break;
 
     case 'n':
       strcpy_P(c.type, PSTR("node_id"));
-      strcpy(c.content, kpi.nodeID);
+      strcpy(c.content, _nodeID);
       if (type == 'j' || type == 'l') *state = 'f'; //"finished"
       else if (type == 'u') *state = 'u';
       else *state = 's';
@@ -254,7 +299,7 @@ Contents create(char type, char *state , KP kpi , Triple t) {
 
     case 'u':
       strcpy_P(c.type, PSTR("parameter name = \"subscription_id\""));
-      strcpy(c.content, kpi.sub);
+      strcpy(c.content, _subID1);
       *state = 'f';
 
       break;
@@ -287,9 +332,16 @@ Contents create(char type, char *state , KP kpi , Triple t) {
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-bool composeMessage(char code, KP kpi, Triple t) {
+void KP::composeMessage(char code, Triple t) {
 
-  if (!initializeSD()) return false;
+  #ifdef DEBUG
+  Serial.println(F("-----------COMPOSING----------"));
+  #endif
+
+  if (!initializeSD()) {
+    _status = SD_ERR_INI;
+    return;
+  }
 
   File xtemp;
   char name[5] = "";
@@ -301,7 +353,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
   #endif
 
   xtemp = SD.open(name, FILE_READ);
-
+  _comm.connect(_ip, _port);
   if (xtemp) {
 
     #ifdef DEBUG
@@ -317,7 +369,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
 
     bool readingName = false, last = true;
 
-    Contents curr = create(code, &cState, kpi, t);
+    Contents curr = create(code, &cState, t);
 
     while (xtemp.available() > 0) {
 
@@ -325,8 +377,8 @@ bool composeMessage(char code, KP kpi, Triple t) {
       state = c;
       buffer[count++] = c;
 
-      if (count > MAX_PACKET_SIZE - 2 || xtemp.peek() < 0) {
-        (kpi.client).write(buffer);
+      if (count > MAX_PACKET_SIZE - 2 || xtemp.peek() <= 0) {
+        _comm.write(buffer);
         strncpy(buffer, "", sizeof(buffer));
         count = 0;
         delay(TX_LATENCY);
@@ -363,7 +415,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
               #endif
 
               if (count > 0 && count + strlen(curr.content) > MAX_PACKET_SIZE - 2) {
-                (kpi.client).write(buffer);
+                _comm.write(buffer);
                 count = 0;
                 strncpy(buffer, "", sizeof(buffer));
                 delay(TX_LATENCY);
@@ -371,7 +423,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
 
               strcat(buffer, curr.content);
               count += strlen(curr.content);
-              curr = create(code, &cState, kpi, t);
+              curr = create(code, &cState, t);
 
             }
 
@@ -387,10 +439,11 @@ bool composeMessage(char code, KP kpi, Triple t) {
 
       lastState = state;
     }
-
-    (kpi.client).println();
+    _comm.println();
     xtemp.close();
-    return true;
+
+    _status = OK;
+    return;
   }
 
 
@@ -399,7 +452,7 @@ bool composeMessage(char code, KP kpi, Triple t) {
   Serial.println(code);
   #endif
 
-  return false;
+  _status = SD_ERR_FILE;
 }
 
 //---------------------------------------------------------------------------------------------------------------------------------------------------------------

@@ -2,14 +2,6 @@
 
 boolean HasSDBegun = false;
 
-WiFiClient connectToSib(IPAddress server,  short port) {
-  WiFiClient client;
-  if (client.connect(server, port)) return client;
-  return NULL;
-}
-
-//--------------------------------------------------------------------------------------------------------------
-
 bool WiFiConnect(const char ssid[], const char pass[]) {
 
   int status = WL_IDLE_STATUS;
@@ -20,7 +12,7 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
 #ifdef DEBUG
     Serial.println(F("Error on WiFi Shield"));
 #endif
-    return false;
+    return WIFI_BAD_SHIELD;
   }
 #endif
 
@@ -37,14 +29,14 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
       Serial.println(F("WiFi timed out!"));
 #endif
 
-      return false;
+      return WIFI_TIME_OUT;
     }
     status = WiFi.begin(ssid, pass);
 
 
   }
 
-  return true;
+  return WIFI_OK;
 
 }
 
@@ -52,7 +44,7 @@ bool WiFiConnect(const char ssid[], const char pass[]) {
 
 bool initializeSD() {
 
-  if(HasSDBegun) return true;
+  if(HasSDBegun) return SD_OK;
 
 #ifdef DEBUG
   Serial.println(F("Init SDCard..."));
@@ -63,12 +55,12 @@ bool initializeSD() {
     Serial.println(F("SDCard ok."));
 #endif
     HasSDBegun = true;
-    return true;
+    return SD_OK;
   }
   
 #ifdef DEBUG
   Serial.println(F("SD Error!"));
 #endif
-  return false;
+  return SD_ERR_INI;
 }
 

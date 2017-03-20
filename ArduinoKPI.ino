@@ -1,45 +1,28 @@
 #include "ArduinoKPI.h"
 
-
-#define WIFI1 "ASUS", "miofigliomaggiore88"
-#define WIFI2 "Xperia", "bubu1234"
-#define WIFI3 "Vodafone-33346004", "12TREstell4"
+KP kpi;
 
 void setup() {
   Serial.begin(57600);
-  KP kpi;
-  if (WiFiConnect(WIFI3)) {
-    Serial.println(F("connected"));
-  }
-  else {
-    Serial.println(F("cant connect"));
-    //while (1);
-  }
 
-  IPAddress server(192, 168, 1, 5);
-  kpi.client = connectToSib(server, 10010);
-  if (kpi.client == NULL) {
-    Serial.println(F("Cant connect to server"));
-    //while (1);
-  }
+  do {
+    kpi.begin("SIB", "abcd1234", 10010, 192, 168, 43, 52);
+  } while (kpi.getState() != 0);
 
-  strcpy_P(kpi.nodeID, PSTR("arduino"));
-  kpi.trID = 1;
+  kpi.join();
 
-  store();
+  Triple t;
+  strcpy(t.subject, "http://ns#a");
+  strcpy(t.predicate, "http://ns#b");
+  strcpy(t.object, "http://ns#c");
+  kpi.rdfInsert(t);
+  kpi.leave();
 
-  /*
-      join(kpi);
-      (kpi.client).println();
+  if (kpi.getState() == 0) Serial.println("ok");
+  else Serial.println("nok");
 
-      delay(4000);
-      if((kpi.client).available()>0){
-        receive(kpi.client);
-        store();
-        Serial.println(F("Received response!"));
-      }
-  */
-  Serial.println(F("FINISHED!!!"));
+  Serial.println("finished");
+  while (1);
 }
 
 void loop() {
